@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Yoink Bridge",
+  "version": "1.0",
+  "description": "Tells the Yoink daemon what's in the browser right now.",
+  "permissions": ["tabs", "alarms", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

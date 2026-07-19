@@ -1,0 +1,11 @@
+# mediapipe 0.10.35 dropped the legacy `mp.solutions` API (Tasks-only build);
+# 0.10.21 still ships it. opencv pinned to a 4.x that matches its numpy.
+mediapipe==0.10.21
+opencv-python==4.11.0.86
+websockets
+pyperclip
+zeroconf
+Pillow
+pywin32
+psutil          # which document a viewer process has open (grab/docpath.py)
+uiautomation    # read a browser's address-bar URL (grab/docpath.py)
