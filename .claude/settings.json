@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import mediapipe, cv2; print\\('mediapipe', mediapipe.__version__, 'cv2', cv2.__version__\\)\")",
+      "Bash(python -m gesture.test_gesture)",
+      "Bash(python -c \"import mediapipe as mp; print\\('mp', mp.__version__\\); print\\('has solutions:', hasattr\\(mp, 'solutions'\\)\\); print\\(mp.solutions.hands\\)\")",
+      "Bash(python -c \"import mediapipe as mp; print\\([a for a in dir\\(mp\\) if not a.startswith\\('__'\\)]\\); print\\('---tasks---'\\); import mediapipe.tasks as t; print\\([a for a in dir\\(t.python.vision\\) if 'and' in a.lower\\(\\) or 'Hand' in a]\\)\")",
+      "Bash(pip install *)",
+      "Bash(python -c \"import mediapipe as mp; print\\('ver', mp.__version__, 'solutions:', hasattr\\(mp,'solutions'\\)\\)\")",
+      "Bash(pip uninstall *)",
+      "Bash(python -c \"import numpy,cv2,mediapipe as mp; print\\('numpy',numpy.__version__,'cv2',cv2.__version__,'mp',mp.__version__,'solutions',hasattr\\(mp,'solutions'\\)\\)\")",
+      "Bash(python -c \"import gesture.camera; print\\('camera module imports OK'\\)\")"
+    ]
+  }
+}
