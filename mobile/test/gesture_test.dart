@@ -2,8 +2,6 @@
 /// Run: flutter test
 library;
 
-import 'dart:ui' show Offset;
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yoink_mobile/gesture/classifier.dart';
 import 'package:yoink_mobile/gesture/state_machine.dart';

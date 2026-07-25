@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android blocks cleartext traffic by default since API 28, which kills ws://
+  connections silently: the socket just never opens and nothing is logged.
+
+  Yoink is LAN-only by design (DESIGN.md section 2) and talks plain ws:// to
+  peers on the local network, so cleartext has to be allowed.
+
+  ponytail: this permits cleartext everywhere, not only on the LAN. Android's
+  network security config can scope by *domain* but not by IP range, and LAN
+  peers are bare IPs handed to us by mDNS, so there is no CIDR rule to write.
+  The app makes no other HTTP requests, so the practical exposure is nil. If
+  Yoink ever talks to a real server, that traffic must be https:// and this
+  should become a domain-scoped exception instead.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true"/>
+</network-security-config>

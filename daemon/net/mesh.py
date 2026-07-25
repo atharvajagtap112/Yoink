@@ -137,7 +137,9 @@ class Mesh:
 
     async def _serve(self):
         # max_size: the default 1 MiB would reject anything but a tiny file.
-        async with websockets.serve(self._accept, "127.0.0.1", self.port,
+        # 0.0.0.0, not 127.0.0.1: a real peer (the phone) dials in over the LAN.
+        # Pairing is the trust gate, so listening on the LAN is safe by design.
+        async with websockets.serve(self._accept, "0.0.0.0", self.port,
                                     max_size=config.MAX_WS_MESSAGE):
             await asyncio.Future()
 
