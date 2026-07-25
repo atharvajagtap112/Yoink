@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Yoink</string>
+    <string name="starting">starting…</string>
+    <string name="tracking">tracking — fist = SEND, open hand = RECEIVE</string>
+    <string name="camera_denied">Camera permission denied. Enable it in app settings and reopen.</string>
+    <string name="stop_watching">Stop watching</string>
+    <string name="camera_on">Camera: OFF — tap to start</string>
+    <string name="camera_off">Camera: ON — tap to stop</string>
+    <string name="mesh_live">%1$d peer(s) — %2$s</string>
+    <string name="pair_title">Pair with %1$s?</string>
+    <string name="pair_message">Enter the PIN shown on %1$s</string>
+    <string name="pair">Pair</string>
+    <string name="enable_capture">Enable screen grab</string>
+    <string name="capture_on">Screen grab ready — fist with an empty clipboard sends a screenshot</string>
+    <string name="capture_declined">Screen grab off — SEND will only send clipboard text</string>
+    <string name="stopped">stopped — reopen the app to start watching again</string>
+    <string name="grant_overlay">Display over apps</string>
+    <string name="overlay_already">Already granted</string>
+    <string name="bal_test">Test bg open (30s)</string>
+    <string name="bal_armed">Armed — press Home now. Browser should open in 30s. Do NOT reopen Yoink.</string>
+    <string name="bal_armed_no_perm">Armed WITHOUT overlay permission — press Home, wait 30s. Expect nothing to open.</string>
+</resources>

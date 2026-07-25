@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Handing a caught file to another app (a PDF viewer, the gallery) requires a
+  content:// URI from a FileProvider. A raw file:// URI throws
+  FileUriExposedException on modern Android.
+
+  Only the `received` folder inside our app-specific external directory is
+  exposed — not the whole app sandbox.
+-->
+<paths>
+    <external-files-path name="received" path="received/" />
+    <files-path name="internal_received" path="received/" />
+</paths>

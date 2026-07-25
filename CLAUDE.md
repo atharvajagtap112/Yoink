@@ -69,11 +69,26 @@ Two cooperating processes per desktop device, plus a browser extension:
 2. **Browser extension (JS, Manifest V3).** Connects to the daemon over `ws://localhost` and
    answers "what's in the browser right now" (active URL, selection, hovered image, YouTube
    timestamp). Only consulted when the browser is the focused app.
-3. **Android client (Kotlin) — later.** Reimplements the daemon's client role natively.
-   Deferred until the protocol is battle-tested on desktop.
+3. **Android client (Kotlin).** Reimplements the daemon's client role natively. The camera
+   lives in a **foreground service**, not the Activity — see section 3a for why that is
+   forced, and why it killed an earlier Flutter version of this client.
 
 Everything is glued by a shared **JSON wire protocol** (section 6), not shared code — that's
 why Python-on-desktop and Kotlin-on-phone coexist cleanly.
+
+**The phone is client-only.** It dials out to discovered desktops and never listens or
+advertises. One full-duplex socket carries both directions, and since the desktop mesh
+already broadcasts to every live connection, an inbound phone connection receives payloads
+with no desktop changes. This also removes the "lower device_id dials" dedupe rule on the
+phone side: the desktop can't discover the phone, so it can never dial it, so there is no
+second socket to dedupe.
+
+**Two desktop changes were needed for real cross-device use** (both were loopback-only
+choices that made a phone connection impossible):
+- `net/mesh.py` binds `0.0.0.0`, not `127.0.0.1`, so a LAN peer can connect. Pairing is the
+  trust gate, so listening on the LAN is safe by design.
+- `net/discovery.py` advertises the machine's LAN IP, not `127.0.0.1`. Loopback testing
+  still works — two instances on one laptop just reach each other via the LAN IP.
 
 ### Send path (on close gesture)
 
@@ -100,6 +115,60 @@ open detected → take last received payload → dispatch by type:
 
 The receiver uses OS default-app association to open things (`os.startfile` on Windows,
 `Intent`+MIME on Android, `open` on macOS). It never hardcodes which app to launch.
+
+---
+
+## 3a. Android platform constraints (verified on-device, don't re-litigate)
+
+These were each discovered the hard way. They are OS behaviour, not code problems, and they
+shape the Android client's whole design. Verified on a OnePlus CPH2569, Android 14.
+
+**No cross-app content access.** Nothing on Android can ask Chrome for its URL or a PDF
+viewer for its file path — there is no equivalent of the Windows UI Automation tricks in
+`grab/router.py`. So the phone's grab is only ever: clipboard text, or a screenshot. It can
+never send the real PDF. The only path to real files from another app is Android's **share
+sheet** (Share → Yoink), which is a tap, not a gesture. This is the phone's version of the
+section 2 tradeoff, and it is harsher than Windows'.
+
+**Background camera requires a foreground service.** A backgrounded app loses camera access
+(Android 9+). Keeping gestures alive while you're in another app needs a foreground service
+with `android:foregroundServiceType="camera"`, plus `FOREGROUND_SERVICE` and
+`FOREGROUND_SERVICE_CAMERA`. `CAMERA` is a *while-in-use* permission, so **the service must
+be started while the app is visible** — starting it from the background throws
+`SecurityException`.
+
+**This is what ended the Flutter client.** `camera_android_camerax` binds CameraX to the
+*Activity* lifecycle, so the stream dies when the app backgrounds and no foreground service
+changes that. Kotlin owns the `LifecycleOwner` and can hand it to a `LifecycleService`. That
+single difference is the reason the mobile client is native.
+
+**Background *opening* requires `SYSTEM_ALERT_WINDOW`.** Background activity starts have
+been blocked since Android 10, so `startActivity` from a backgrounded app silently does
+nothing — which would break the RECEIVE gesture on the homescreen. Holding "Display over
+other apps" is a documented exemption and **it works**: verified at a 30-second delay, with
+the framework logging the reason itself:
+```
+W ActivityTaskManager: Background activity start for com.yoink allowed
+                       because SYSTEM_ALERT_WINDOW permission is granted.
+I ActivityTaskManager: START ... com.android.chrome ... (BAL_ALLOW_SAW_PERMISSION)
+```
+We want that permission anyway — the always-on-top "caught" pop *is* an overlay window.
+
+**Beware the BAL grace period when testing this.** A recently-interacted-with app may start
+activities regardless of permission; AOSP sets that window to 10 s. The first version of the
+spike waited 5 s and "passed" even with the permission revoked — a false green light. Any
+test of background launching must wait well past 10 s, and should confirm the reason code in
+logcat rather than trusting that something appeared on screen.
+
+**Clipboard is readable only by the focused app** (Android 10+). So a gesture made while
+backgrounded cannot read the clipboard, and the background grab is screenshot-only. The
+clipboard-first strategy only applies when Yoink itself is on screen.
+
+**MediaProjection consent is per-session and single-use.** Ask once, then keep one
+`VirtualDisplay` alive for the app session and pull frames from it; tearing it down means a
+new consent dialog on every gesture. The foreground service must be up *before* the
+projection is created (Android 14+), which is why it is created in `onServiceConnected`
+rather than inline.
 
 ---
 
@@ -134,8 +203,24 @@ The receiver uses OS default-app association to open things (`os.startfile` on W
 **Browser extension (JS, Manifest V3)** — content script + background service worker +
 `ws://localhost` client.
 
-**Android (Kotlin, later)** — CameraX, MediaPipe Tasks (Hand Landmarker), NSD for discovery,
-OkHttp/Ktor WebSocket, MediaProjection for capture, ClipboardManager, Intent+MIME to open.
+**Android client (Kotlin, native)** — in `android/`, built with Gradle. Not Flutter; see
+section 3a for why.
+- CameraX (`camera-core`/`camera2`/`camera-lifecycle`/`camera-view`) — frames, bound to a
+  `LifecycleService` so they survive backgrounding
+- `com.google.mediapipe:tasks-vision` — Hand Landmarker, model bundled at
+  `app/src/main/assets/hand_landmarker.task`
+- `androidx.lifecycle:lifecycle-service` — the `LifecycleOwner` CameraX binds to
+- NSD (`android.net.nsd`) for discovery, OkHttp WebSocket for the mesh
+- MediaProjection for screen capture, ClipboardManager, `Intent`+MIME to open
+
+Toolchain note: AGP 9+ has **built-in Kotlin** — applying `org.jetbrains.kotlin.android` on
+top of it is a hard error. And `local.properties` is a Java properties file, so `sdk.dir`
+needs forward slashes; backslashes are escapes and get silently mangled.
+
+**Superseded: `mobile/` (Flutter/Dart).** A complete Flutter client through milestones
+7a–7d (gestures, mesh, pairing, typed dispatch, grab). It works, but only while the app is
+foreground — section 3a explains why that is unfixable in Flutter. Kept for reference until
+the Kotlin client reaches parity, then delete. Don't add features to it.
 
 Ask before adding any dependency not listed here.
 
@@ -198,7 +283,24 @@ yoink/
       dispatch.py        # type -> save + open by association
       toast.py           # always-on-top pop
   extension/             # MV3 browser extension (milestone 6)
+  android/               # Kotlin client (milestones K1+) — the live mobile client
+    app/src/main/
+      assets/hand_landmarker.task    # bundled MediaPipe model
+      kotlin/com/yoink/
+        MainActivity.kt              # thin viewer: binds the service, draws the overlay
+        GestureService.kt            # LifecycleService: owns the camera, fires gestures
+        OverlayView.kt               # landmarks + pose + SEND/RECEIVE flash
+        gesture/
+          Classifier.kt              # landmarks -> OPEN / CLOSED  (port of classifier.py)
+          StateMachine.kt            # debounce/cooldown           (port of state_machine.py)
+          HandTracker.kt             # CameraX + MediaPipe -> classifier -> state machine
+    app/src/test/                    # JVM unit tests, no emulator needed
+  mobile/                # SUPERSEDED Flutter client (7a-7d). Reference only; see section 5.
 ```
+
+The Kotlin `gesture/` files are deliberate line-by-line ports of the Python ones. Keep the
+names matched and the behaviour identical — when one changes, change both, and both have the
+same self-check suite (`test_gesture.py` / `GestureTest.kt`) covering the same cases.
 
 ---
 
@@ -224,16 +326,81 @@ read and debug.
    **Send side testable on one laptop; full round-trip via loopback.**
 6. **Browser extension.** The `ws://localhost` bridge → URL, selection, hovered image,
    YouTube timestamp. **Testable on one laptop.**
-7. **Android client (Kotlin).** Reimplement the client last, protocol already proven.
-   Needs the phone; deferred.
+7. **Android client.** Reimplement the client last, protocol already proven.
+   **Done in Flutter as 7a–7d, then superseded** — see the K ladder below.
+
+### The K ladder — Kotlin client (current work)
+
+Milestones 1–6 (desktop) are done. The Flutter client 7a–7d is done and works, but only
+while the app is foreground, which is unfixable in Flutter (section 3a). The Kotlin client
+replaces it. Same vertical-slice rule: each one runs and is testable on its own.
+
+- **K1 — gesture detection standalone.** ✅ Done. CameraX + MediaPipe + the ported classifier
+  and state machine, with a live landmark overlay. Carries the background-activity-launch
+  spike (kept as a regression check — if an OS update revokes `BAL_ALLOW_SAW_PERMISSION`,
+  background catching breaks silently and that button is how you find out).
+- **K2 — camera into a foreground service.** ✅ Done. `GestureService` owns the camera;
+  gestures fire with the app backgrounded. Verified: gesture toasts over the launcher, and
+  `dumpsys` showing `types=00000040` (`FOREGROUND_SERVICE_TYPE_CAMERA`).
+- **K3 — networking.** ✅ Done. Protocol, NSD discovery, OkHttp WebSocket mesh, PIN pairing.
+  A port, not a redesign: 7b settled the client-only dial rule, the dialer-side handshake,
+  and heartbeat/reconnect. No desktop changes. Verified: paired with a fresh PIN and caught
+  a real PDF payload from the daemon.
+  - Networking lives in `GestureService` alongside the camera, so it survives backgrounding.
+    The one exception is the PIN prompt, which needs a human: it is set only while the
+    Activity is bound, and with no UI the mesh declines and backs off rather than pairing
+    silently.
+  - Two Android traps, both silent: `NsdManager.resolveService` answers a *concurrent*
+    resolve with `FAILURE_ALREADY_ACTIVE`, so resolves are queued; and org.json's
+    `put(key, null)` *deletes* the key, which would drop `type`/`filename`/`mime` from every
+    envelope — use `JSONObject.NULL`, and read it back with `isNull` rather than `optString`
+    (which returns the literal string "null").
+- **K4 — receive + typed dispatch + overlay pop.** ✅ Done. On a payload: decode + save,
+  then a `SYSTEM_ALERT_WINDOW` overlay pop (`Pop.kt`); the RECEIVE gesture or a tap opens it
+  by type — clipboard / browser / FileProvider `content://` intent. Verified: open hand on
+  the **homescreen** and a caught PDF opens over the launcher. That is the payoff the whole
+  rewrite was for, and the thing Flutter could not do.
+  - Files land in the app-specific external dir and are handed out via a FileProvider
+    (`content://`, not `file://` — the latter throws `FileUriExposedException`). Opening from
+    the service needs `FLAG_ACTIVITY_NEW_TASK`, and from the background needs the same
+    `SYSTEM_ALERT_WINDOW` the pop uses. A blocked open is caught and surfaced, not crashed.
+- **K5 — send/grab.** Clipboard (foreground only) + MediaProjection screenshot. The
+  `ScreenCaptureService.kt` written for Flutter 7d ports over nearly as-is.
+
+- **K6 — share-sheet sending** (Share → Yoink). ✅ Done. The only way to get a *real* file
+  off the phone rather than a screenshot (section 3a). A tap, not a gesture, so it complements
+  K5. `ShareActivity` (no UI, translucent) parses the SEND/SEND_MULTIPLE intent, reads the
+  `content://` bytes, and broadcasts via the mesh. ponytail: it reuses the camera service to
+  reach the mesh, so a share turns the camera on; the upgrade path is a standalone
+  NetworkService if share-without-camera ever matters.
+
+Phone UI (post-K5 polish): the preview shows **landmarks only on black** (the camera runs but
+its surface is never attached), a **Camera on/off toggle**, and the service stops on
+`onTaskRemoved` so swiping Yoink from recents releases the camera.
 
 ---
 
-## 9. Testing without a second laptop
+## 9. Testing
 
-There is currently only one laptop and no Android device. Do **not** let this block the
-networking milestones. Every networking feature must be runnable as **two daemon instances
-on the same machine**, on different ports, talking over `127.0.0.1`:
+**Now available:** one Windows laptop (the daemon) and a OnePlus CPH2569 on Android 14 (the
+client), on the same WiFi — usually the phone's own hotspot, with the laptop as a client.
+Real two-device testing is possible; use it for the final "does this feel like magic" check.
+
+Practicalities for the real-device path:
+- The laptop's inbound rules must cover the daemon's Python binary on the **network profile
+  the WiFi is actually on** (a hotspot usually shows as Public, not Private). Existing
+  program-scoped rules for `python.exe` may already cover it — check before adding any.
+- Install the Kotlin client with `cd android && .\gradlew.bat installDebug`.
+- MediaPipe logs ~60 lines/second, which evicts sparse entries from the logcat buffer fast.
+  Filter by PID and grep for the specific tag, and don't read absence of a log line as
+  absence of the event.
+- OxygenOS is aggressive about killing background services. If gestures stop firing while
+  backgrounded, check Settings → Battery → App battery usage → Yoink → **Unrestricted**
+  before assuming a code bug.
+
+**Loopback stays the primary harness** for anything networking. Every networking feature
+must still be runnable as **two daemon instances on the same machine**, on different ports,
+talking over `127.0.0.1`:
 
 - Instance A on port 8765, instance B on port 8766, same codebase.
 - This exercises the full protocol, mesh logic, pairing, dispatch, and toast — everything
@@ -252,6 +419,13 @@ Keep this loopback path working as milestones are added — it's the primary tes
 - One milestone per session. Don't jump ahead or scaffold future milestones early.
 - Don't re-architect. LAN-only, mesh (no hub), event-based, JSON protocol, transition-based
   gestures — all fixed. Flag and ask before changing any of them.
+- **Section 3a is settled too.** Those constraints were each paid for on-device. Don't
+  propose working around them without new evidence, and don't promise the phone can grab a
+  real file from another app — it can't.
+- **Prove platform assumptions before building on them.** The BAL spike cost twenty lines
+  and saved four milestones of work resting on a guess. When an OS behaviour is load-bearing,
+  test it in isolation first, wait past any grace period, and confirm the reason code rather
+  than trusting what appears on screen.
 - Keep modules small and readable. The human is vibecoding and must be able to follow the
   code to debug it later. Prefer clarity over cleverness.
 - No cloud, no message broker, no heavy frameworks. Ask before adding a new dependency.

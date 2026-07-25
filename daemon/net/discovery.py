@@ -10,9 +10,10 @@ Two ids are in play and they are NOT the same thing:
     to the mesh, because pairing and the "lower id dials" rule must survive a
     restart. It rides along in the TXT record.
 
-Single-host testing note: the processes discover each other over multicast on
-the real interface, but advertise 127.0.0.1 so the connect-back stays on
-loopback (no firewall prompt). For real cross-device use, publish the LAN IP.
+We advertise the LAN IP, not 127.0.0.1, because real peers (the phone) have to
+be able to reach us. Loopback testing still works — two instances on this laptop
+just connect via the laptop's own LAN IP instead of 127.0.0.1. Cost: Windows may
+raise a firewall prompt on first run; allow it on private networks.
 """
 import socket
 import uuid
@@ -20,6 +21,19 @@ import uuid
 from zeroconf import ServiceBrowser, ServiceInfo, ServiceStateChange, Zeroconf
 
 SERVICE_TYPE = "_yoink._tcp.local."
+
+
+def lan_ip():
+    """This machine's address on the LAN. The UDP 'connect' sends nothing — it
+    just asks the routing table which local interface would reach the outside."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"        # no network: loopback is all we have
+    finally:
+        s.close()
 
 
 class Discovery:
@@ -38,7 +52,7 @@ class Discovery:
         self._info = ServiceInfo(
             SERVICE_TYPE,
             f"{self.label}.{SERVICE_TYPE}",
-            addresses=[socket.inet_aton("127.0.0.1")],
+            addresses=[socket.inet_aton(lan_ip())],
             port=self.port,
             properties={"name": self.name, "device": self.device_id},
             server=f"{self.label}.local.",
