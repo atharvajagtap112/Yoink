@@ -26,7 +26,7 @@ PAIR_RETRY_S = 30  # after a failed pairing, so a denial can't spam the prompt
 
 class Mesh:
     def __init__(self, name, device_id, port, store, on_receive, on_status,
-                 prompt=None):
+                 prompt=None, show_pin=None):
         self.name = name
         self.device_id = device_id
         self.port = port
@@ -34,6 +34,10 @@ class Mesh:
         self.on_receive = on_receive
         self.on_status = on_status
         self.prompt = prompt or self._console_prompt
+        # Called on the acceptor side with (peer_name, pin) when a peer must be
+        # paired, and (peer_name, None) once it resolves — so a GUI can show the
+        # PIN prominently instead of burying it in the log. None = console only.
+        self.show_pin = show_pin
         self.peers = {}       # device_id -> Peer   (paired + live only)
         self._targets = {}    # device_id -> (host, port)
         self._dialers = {}    # device_id -> asyncio.Task
@@ -109,7 +113,8 @@ class Mesh:
         try:
             res = await pairing.handshake(
                 ws, dialer=dialer, me_name=self.name, me_id=self.device_id,
-                store=self.store, log=self.on_status, prompt=self.prompt)
+                store=self.store, log=self.on_status, prompt=self.prompt,
+                show_pin=self.show_pin)
         except (asyncio.TimeoutError, websockets.exceptions.WebSocketException):
             return True
         if not res:
@@ -154,10 +159,11 @@ class Mesh:
         async with self._prompt_lock:
             return (await asyncio.to_thread(ask)).strip()
 
-    async def _broadcast(self, env):
-        peers = list(self.peers.values())
+    async def _broadcast(self, env, targets=None):
+        peers = [p for pid, p in self.peers.items()
+                 if targets is None or pid in targets]
         if not peers:
-            self.on_status("broadcast: no paired peers yet — nothing sent")
+            self.on_status("broadcast: no selected peers connected — nothing sent")
             return
         sent = []
         for p in peers:
@@ -190,7 +196,13 @@ class Mesh:
         threading.Thread(target=runner, daemon=True).start()
         ready.wait(5)
 
-    def broadcast(self, env):
-        """Fan a payload out to every paired peer. Safe from any thread."""
+    def broadcast(self, env, targets=None):
+        """Fan a payload out to paired peers. Safe from any thread.
+
+        targets: an iterable of device_ids to send to, or None for all. The GUI
+        passes the ticked devices so you can send to some peers but not others.
+        """
         if self._loop:
-            asyncio.run_coroutine_threadsafe(self._broadcast(env), self._loop)
+            sel = None if targets is None else set(targets)
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast(env, sel), self._loop)

@@ -98,8 +98,15 @@ class HandTracker(
         val options = HandLandmarker.HandLandmarkerOptions.builder()
             .setBaseOptions(base)
             .setNumHands(1)
-            .setMinHandDetectionConfidence(0.6f)
-            .setMinTrackingConfidence(0.6f)
+            // A closed fist has much lower hand-presence + tracking confidence
+            // than an open palm (fingers curl and self-occlude). At 0.6 the fist
+            // fell below and tracking dropped it — you'd see no landmarks at all.
+            // Low presence/tracking keeps the fist held; detection stays higher
+            // so we still re-acquire cleanly. The debounce/cooldown in the state
+            // machine filters any extra jitter this lets through.
+            .setMinHandDetectionConfidence(0.5f)
+            .setMinHandPresenceConfidence(0.3f)
+            .setMinTrackingConfidence(0.3f)
             .setRunningMode(RunningMode.LIVE_STREAM)
             .setResultListener { result, _ -> onResult(result) }
             .setErrorListener { /* a dropped frame is not worth killing the app */ }

@@ -27,18 +27,21 @@ def main():
     store = PairedStore(config.paired_path(args.name))
     save_dir = config.save_dir(args.name)
     last = {"env": None}          # only the last received payload is kept
+    arrival_ref = [None]          # set to the GUI's handler once the window is up
 
     def _dispatch(env):
         dispatch(env, save_dir)
 
     def on_arrival(env):
-        # Payload landed over the network. With a camera, a RECEIVE gesture opens
-        # it; headless has no gesture, so open it right away.
+        # Payload landed over the network. With a camera (GUI), the app holds it
+        # and a RECEIVE gesture opens it; headless has no gesture, so open now.
         last["env"] = env
         # for image/file, `data` is base64 — show the filename, not 60 chars of it
         what = env.get("filename") or (env.get("data") or "")[:60]
         print(f"received <- {env.get('sender')}: {env.get('type')} {what!r}")
-        if args.no_camera:
+        if arrival_ref[0]:
+            arrival_ref[0](env)
+        elif args.no_camera:
             _dispatch(env)
 
     def log(msg):
@@ -60,21 +63,6 @@ def main():
                          mesh.peer_up, mesh.peer_down)
         disc.start()
         print("[net] discovery on, browsing for peers...")
-
-    def on_event(event):
-        if event == "SEND":
-            env = router.grab(args.name, log=log)      # foreground routing (5b)
-            if env is None:
-                print("SEND: nothing to grab")
-                return
-            mesh.broadcast(env)
-            what = env.get("filename") or (env.get("data") or "")[:60]
-            print(f"SENT -> {env.get('type')} {what!r}")
-        elif event == "RECEIVE":
-            if last["env"] is None:
-                print("RECEIVE: nothing received yet")
-            else:
-                _dispatch(last["env"])
 
     if args.send_demo:
         # Test aid (5a): the real grab doesn't exist yet, so fake one payload.
@@ -106,7 +94,7 @@ def main():
                 disc.close()
         return
 
-    # Remember which app you were in before you clicked the camera preview.
+    # Remember which app you were in before you clicked the Yoink window.
     router.start_tracker()
     # Optional upgrade: if the extension is installed it connects here and the
     # browser grab gets selection / hovered image / video timestamp. If it never
@@ -114,9 +102,15 @@ def main():
     browser_bridge.start(log)
     print(f"[net] browser bridge on {config.BRIDGE_PORT} "
           f"(install extension/ for selection + video timestamps)")
-    idx = args.camera if args.camera is not None else camera.pick_camera()
-    print(f"Using camera {idx}. Close hand = SEND, open hand = RECEIVE. q to quit.")
-    camera.run(on_event=on_event, camera_index=idx)
+
+    # The desktop app: skeleton view, camera picker, device ticks, send. It owns
+    # the main thread; the mesh (asyncio) and camera (CameraWorker) run behind it.
+    from gui import launch
+    settings = config.load_settings(args.name)
+    if args.camera is not None:
+        settings["camera"] = args.camera     # --camera overrides the saved one
+    print("Opening Yoink window. Fist = SEND, open hand = RECEIVE.")
+    launch(mesh, args.name, save_dir, settings, arrival_ref)
 
 
 if __name__ == "__main__":

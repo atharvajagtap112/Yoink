@@ -137,6 +137,16 @@ def grab(sender, log=print):
     return _image_env(img, sender, "screenshot.png", log)
 
 
+def grab_clipboard(sender, log=print):
+    """Grab whatever is ALREADY on the clipboard — no gesture, no Ctrl+C.
+
+    For the GUI's "Send clipboard" button and auto-send: you've copied
+    something yourself, so we just read it, no foreground poking or screenshot
+    fallback. Returns an envelope, or None if the clipboard has nothing usable.
+    """
+    return _from_clipboard(sender, log)
+
+
 def _step_aside(log):
     """Our own window has focus. Return (hwnd_to_grab, we_have_its_focus)."""
     target = _last_other_window

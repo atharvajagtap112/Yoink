@@ -5,6 +5,7 @@ instances on ONE laptop each get their own identity and paired-peer list, which
 is exactly what the single-machine test in section 9 needs.
 """
 import argparse
+import json
 import re
 import socket
 import uuid
@@ -84,6 +85,25 @@ def device_id(name):
 
 def paired_path(name):
     return state_dir(name) / "paired.json"
+
+
+def _settings_path(name):
+    return state_dir(name) / "settings.json"
+
+
+def load_settings(name):
+    """GUI preferences (selected camera, etc.). Empty dict if none/corrupt."""
+    f = _settings_path(name)
+    if f.exists():
+        try:
+            return json.loads(f.read_text())
+        except ValueError:
+            pass
+    return {}
+
+
+def save_settings(name, settings):
+    _settings_path(name).write_text(json.dumps(settings, indent=2))
 
 
 def parse_args(argv=None):

@@ -2,7 +2,6 @@ package com.yoink.receive
 
 import android.content.Context
 import android.graphics.BitmapFactory
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
@@ -14,6 +13,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
+import com.yoink.R
 
 /**
  * The always-on-top "caught" pop (DESIGN.md section 3, receive path).
@@ -83,13 +84,15 @@ class Pop(private val context: Context) {
         val density = context.resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
 
+        val accent = ContextCompat.getColor(context, R.color.accent)
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#EE222222"))
-                cornerRadius = dp(12).toFloat()
+                setColor(ContextCompat.getColor(context, R.color.panel))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), ContextCompat.getColor(context, R.color.stroke))
             }
             setOnClickListener { onTap() }
         }
@@ -101,9 +104,11 @@ class Pop(private val context: Context) {
                     ImageView(context).apply {
                         setImageBitmap(bitmap)
                         scaleType = ImageView.ScaleType.CENTER_CROP
+                        background = GradientDrawable().apply { cornerRadius = dp(10).toFloat() }
+                        clipToOutline = true
                     },
-                    LinearLayout.LayoutParams(dp(56), dp(56)).apply {
-                        rightMargin = dp(12)
+                    LinearLayout.LayoutParams(dp(52), dp(52)).apply {
+                        rightMargin = dp(14)
                     },
                 )
             }
@@ -112,16 +117,27 @@ class Pop(private val context: Context) {
         val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         column.addView(
             TextView(context).apply {
-                text = "caught: ${caught.label}"
-                setTextColor(Color.WHITE)
-                textSize = 15f
-                maxLines = 2
+                text = "CAUGHT"
+                setTextColor(accent)
+                textSize = 10f
+                isAllCaps = true
+                letterSpacing = 0.14f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
             }
         )
         column.addView(
             TextView(context).apply {
-                text = "from ${caught.sender} — open your hand, or tap"
-                setTextColor(Color.parseColor("#B0BEC5"))
+                text = caught.label
+                setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+                textSize = 15f
+                maxLines = 2
+                setPadding(0, dp(1), 0, dp(2))
+            }
+        )
+        column.addView(
+            TextView(context).apply {
+                text = "from ${caught.sender} · open your hand or tap"
+                setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
                 textSize = 12f
                 maxLines = 1
             }

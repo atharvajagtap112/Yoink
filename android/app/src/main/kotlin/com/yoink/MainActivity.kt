@@ -10,9 +10,7 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.provider.Settings
 import android.text.InputType
 import android.widget.Button
@@ -47,6 +45,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var overlay: OverlayView
     private lateinit var status: TextView
+    private lateinit var peers: TextView
     private lateinit var cameraToggle: Button
 
     private var service: GestureService? = null
@@ -68,11 +67,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun onStatus(msg: String, livePeers: Int) {
-                    status.text = if (livePeers > 0) {
-                        getString(R.string.mesh_live, livePeers, msg)
-                    } else {
-                        msg
-                    }
+                    status.text = msg
+                    updatePeers(livePeers)
                 }
             }
             // Pairing needs a human, so the prompt only exists while the UI is
@@ -82,6 +78,7 @@ class MainActivity : AppCompatActivity() {
             watching = true
             updateToggle()
             status.text = svc.netStatus
+            updatePeers(svc.mesh?.peers?.size ?: 0)
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -100,7 +97,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 val input = EditText(this).apply {
                     inputType = InputType.TYPE_CLASS_NUMBER
-                    hint = "0000"
+                    hint = "000000"
                 }
                 AlertDialog.Builder(this)
                     .setTitle(getString(R.string.pair_title, peerName))
@@ -151,10 +148,10 @@ class MainActivity : AppCompatActivity() {
 
         overlay = findViewById(R.id.overlay)
         status = findViewById(R.id.status)
+        peers = findViewById(R.id.peers)
         cameraToggle = findViewById(R.id.camera_toggle)
 
         cameraToggle.setOnClickListener { if (watching) stopWatching() else startAndBind() }
-        findViewById<Button>(R.id.bal_test).setOnClickListener { scheduleBackgroundOpen() }
         findViewById<Button>(R.id.overlay_perm).setOnClickListener { requestOverlayPermission() }
         findViewById<Button>(R.id.enable_capture).setOnClickListener { requestScreenCapture() }
 
@@ -201,12 +198,24 @@ class MainActivity : AppCompatActivity() {
         stopService(Intent(this, GestureService::class.java))
         watching = false
         updateToggle()
+        updatePeers(0)
         overlay.update(emptyList(), com.yoink.gesture.Pose.NO_HAND, null)
         status.text = getString(R.string.stopped)
     }
 
     private fun updateToggle() {
         cameraToggle.setText(if (watching) R.string.camera_off else R.string.camera_on)
+    }
+
+    /** Green pill with a live peer count, or a muted "offline". */
+    private fun updatePeers(live: Int) {
+        if (live > 0) {
+            peers.text = getString(R.string.peers_count, live)
+            peers.setTextColor(ContextCompat.getColor(this, R.color.go))
+        } else {
+            peers.setText(R.string.offline)
+            peers.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+        }
     }
 
     private fun unbindIfNeeded() {
@@ -225,7 +234,8 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    // --- background activity launch spike (K1, kept as a regression check) ---
+    // "Display over other apps" (SYSTEM_ALERT_WINDOW): the RECEIVE gesture and
+    // the caught-pop can only launch from the background with this granted.
 
     private fun hasOverlayPermission() = Settings.canDrawOverlays(this)
 
@@ -240,41 +250,5 @@ class MainActivity : AppCompatActivity() {
                 Uri.parse("package:$packageName"),
             )
         )
-    }
-
-    /**
-     * Try to open a URL [BAL_DELAY_MS] from now, giving you time to press Home.
-     *
-     * The delay must clear Android's background-activity grace period, during
-     * which a recently-interacted-with app may start activities *regardless* of
-     * any permission. AOSP sets that to 10s. A shorter delay produces a false
-     * pass that tells you nothing — the first version of this spike used 5s and
-     * "succeeded" with the permission revoked, which is what gave it away.
-     */
-    private fun scheduleBackgroundOpen() {
-        val granted = hasOverlayPermission()
-        Toast.makeText(
-            this,
-            getString(if (granted) R.string.bal_armed else R.string.bal_armed_no_perm),
-            Toast.LENGTH_LONG,
-        ).show()
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            try {
-                startActivity(intent)
-                android.util.Log.i(TAG, "BAL spike: startActivity called (overlay=$granted)")
-            } catch (e: Exception) {
-                android.util.Log.w(TAG, "BAL spike: refused: $e")
-            }
-        }, BAL_DELAY_MS)
-    }
-
-    private companion object {
-        const val TAG = "Yoink"
-
-        /** Comfortably past AOSP's 10s background-activity grace period. */
-        const val BAL_DELAY_MS = 30_000L
     }
 }

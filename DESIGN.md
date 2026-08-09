@@ -217,10 +217,10 @@ Toolchain note: AGP 9+ has **built-in Kotlin** — applying `org.jetbrains.kotli
 top of it is a hard error. And `local.properties` is a Java properties file, so `sdk.dir`
 needs forward slashes; backslashes are escapes and get silently mangled.
 
-**Superseded: `mobile/` (Flutter/Dart).** A complete Flutter client through milestones
-7a–7d (gestures, mesh, pairing, typed dispatch, grab). It works, but only while the app is
-foreground — section 3a explains why that is unfixable in Flutter. Kept for reference until
-the Kotlin client reaches parity, then delete. Don't add features to it.
+**Deleted: `mobile/` (Flutter/Dart).** A complete Flutter client through milestones 7a–7d
+(gestures, mesh, pairing, typed dispatch, grab). It worked, but only while the app was
+foreground — section 3a explains why that is unfixable in Flutter. The Kotlin client reached
+parity at K6, so it was removed as planned. Recoverable from git history if ever needed.
 
 Ask before adding any dependency not listed here.
 
@@ -249,8 +249,24 @@ One JSON object per WebSocket message. UTF-8. Binary payloads are base64 in `dat
 - `data`: raw string for `url`/`text`; base64 for `image`/`file`
 - `sender`: stable device name; `ts`: unix seconds
 
-**Pairing:** on first connection between two peers, exchange a short PIN (`kind: "pair"`)
+**Pairing:** on first connection between two peers, exchange a 6-digit PIN (`kind: "pair"`)
 that the user confirms, so a stranger on shared WiFi can't connect. Required even on LAN.
+On success the acceptor generates a random 32-byte **pairing key** and both sides persist it
+alongside the peer's device_id.
+
+**Authentication:** every reconnection after pairing is a mutual HMAC-SHA256 challenge over
+the pairing key and a fresh nonce, prover and verifier ids bound in (`type: known` ->
+`challenge` -> `proof` -> `ok`). This exists because a device_id is public — it rides in the
+clear in every `hello` — so asserting one proves nothing; only possession of the key does.
+There is deliberately **no fallback** to the unauthenticated path, because an optional check
+is one an attacker declines to perform. The desktop and Kotlin implementations pin the same
+known-answer vector in their test suites; if the MAC's message format changes, both move
+together or nothing connects.
+
+Known gap, deliberate and documented: the pairing key is handed over on the not-yet-encrypted
+pairing connection, so this is trust-on-first-use — an attacker capturing the network *at the
+moment you pair* learns it. Closing that needs ECDH at connect time plus an encrypted channel,
+which is the next piece of security work. Payload traffic is still plain `ws://`.
 
 ---
 
@@ -295,7 +311,6 @@ yoink/
           StateMachine.kt            # debounce/cooldown           (port of state_machine.py)
           HandTracker.kt             # CameraX + MediaPipe -> classifier -> state machine
     app/src/test/                    # JVM unit tests, no emulator needed
-  mobile/                # SUPERSEDED Flutter client (7a-7d). Reference only; see section 5.
 ```
 
 The Kotlin `gesture/` files are deliberate line-by-line ports of the Python ones. Keep the

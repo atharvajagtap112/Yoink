@@ -11,9 +11,19 @@ import queue
 import threading
 import tkinter as tk
 
-BG = "#222222"
+# Same palette as the desktop app / Android client.
+BG = "#1C1D21"
+FG = "#F4F2EF"
+ACCENT = "#FF6A3D"
+SUBTLE = "#9AA0A6"
 _q = queue.Queue()
 _worker = None
+
+
+# The desktop app runs its own Tk root on the main thread and shows its own
+# "caught" status + flash. If this second (worker-thread) Tk root ever clashes
+# with it, set this False to fall back to the app's own notification.
+enabled = True
 
 
 def show(text, image_path=None, on_click=None, duration=4.0):
@@ -22,6 +32,8 @@ def show(text, image_path=None, on_click=None, duration=4.0):
     image_path: show a thumbnail of this image above the text.
     on_click:   called (with no args) if the user clicks the pop.
     """
+    if not enabled:
+        return
     global _worker
     if _worker is None:
         _worker = threading.Thread(target=_run, daemon=True)
@@ -42,15 +54,17 @@ def _show_one(text, image_path, on_click, duration):
     root = tk.Tk()
     root.overrideredirect(True)              # borderless
     root.attributes("-topmost", True)
-    root.configure(bg=BG)
+    root.configure(bg=BG, highlightbackground=ACCENT, highlightthickness=1)
 
+    tk.Label(root, text="CAUGHT", fg=ACCENT, bg=BG,
+             font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=16, pady=(10, 0))
     if image_path:
         _add_thumbnail(root, image_path)
-    tk.Label(root, text=text, fg="white", bg=BG,
-             font=("Segoe UI", 12), padx=16, pady=10, wraplength=280).pack()
+    tk.Label(root, text=text, fg=FG, bg=BG,
+             font=("Segoe UI", 12), padx=16, pady=8, wraplength=280).pack(anchor="w")
     if on_click:
-        tk.Label(root, text="click to open", fg="#8ab4f8", bg=BG,
-                 font=("Segoe UI", 8)).pack(pady=(0, 8))
+        tk.Label(root, text="click to open", fg=SUBTLE, bg=BG,
+                 font=("Segoe UI", 8)).pack(anchor="w", padx=16, pady=(0, 10))
         _bind_click(root, root, on_click)
 
     root.update_idletasks()

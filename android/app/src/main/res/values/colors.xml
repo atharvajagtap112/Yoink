@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One intentional palette, not neon-on-black. Warm charcoal surfaces with a
+  single coral accent; the hand canvas stays true black so the skeleton reads.
+  Pose colours are semantic (open = go/green, fist = coral) so the overlay
+  teaches the gesture instead of just glowing.
+-->
+<resources>
+    <color name="ink">#0B0B0D</color>            <!-- the hero canvas -->
+    <color name="surface">#141416</color>          <!-- app background -->
+    <color name="panel">#1C1D21</color>            <!-- bottom control panel -->
+    <color name="stroke">#2E3036</color>           <!-- hairlines, ghost outlines -->
+
+    <color name="text_primary">#F4F2EF</color>     <!-- warm white, not #FFF -->
+    <color name="text_secondary">#9AA0A6</color>
+
+    <color name="accent">#FF6A3D</color>           <!-- coral: the brand -->
+    <color name="accent_pressed">#E4552B</color>
+    <color name="on_accent">#1A0B06</color>
+
+    <color name="go">#5FD08A</color>              <!-- open hand / receive -->
+    <color name="warn">#F5B547</color>            <!-- fist / send -->
+
+    <color name="bone">#EDEBE7</color>            <!-- hand skeleton -->
+</resources>
