@@ -393,6 +393,42 @@ Phone UI (post-K5 polish): the preview shows **landmarks only on black** (the ca
 its surface is never attached), a **Camera on/off toggle**, and the service stops on
 `onTaskRemoved` so swiping Yoink from recents releases the camera.
 
+### The S ladder — security (S1 done, S2 is the next session's work)
+
+Three separate weaknesses were identified and deliberately split. **S1 is shipped. S2 and S3
+are pending and were approved to go ahead** — start here next session.
+
+- **S1 — authenticated reconnect.** ✅ Done. Pairing now also establishes a random 32-byte
+  pairing key; every reconnection is a mutual HMAC-SHA256 challenge over that key and a fresh
+  nonce (`known` → `challenge` → `proof` → `ok`), with prover/verifier ids bound in. See
+  section 6. Closed the hole where merely *asserting* a paired device_id was trusted, even
+  though device_ids ride in the clear in every `hello`. Also: 6-digit PIN, and a 60 s lockout
+  after 5 failures on the side showing the PIN (the dialer's 30 s backoff doesn't bind an
+  attacker running their own client). Both implementations pin the same known-answer MAC
+  vector in their tests — that tripwire is the only cheap defence against the two languages
+  silently drifting apart.
+
+- **S2 — an encrypted channel.** ⬜ Pending. Payload traffic is still plain `ws://`, so anyone
+  sniffing the WiFi reads what you send, and — worse — the S1 pairing key is handed over in the
+  clear during pairing, making S1 trust-on-first-use rather than solid. Plan: ECDH on
+  **P-256** at connect, HKDF to a session key, AES-GCM per message. P-256 specifically, not
+  X25519: Android's `KeyAgreement("ECDH")` has been available since API 11, whereas XDH needs
+  API 33 and minSdk here is 26.
+  - **`cryptography` is approved** as a Python dependency for this (section 5's ask-first rule
+    is satisfied — don't re-ask). Android needs nothing new; `javax.crypto` covers it.
+  - The expensive part is **not** the crypto, it's making Python and Kotlin agree byte-for-byte
+    on the KDF inputs, nonce construction and AAD. Budget most of the session for that, extend
+    the pinned-vector trick from S1 to cover the KDF, and remember the failure mode is silent —
+    it just doesn't connect, with no useful error on either side.
+
+- **S3 — MITM-resistant pairing.** ⬜ Pending. Rides on S2: bind the PIN to the ECDH transcript
+  so an active man-in-the-middle can't relay the handshake, and gets a single online guess
+  rather than a replay. Cheap *only* if done with S2; expensive alone.
+
+**Both S2 and S3 break wire compatibility, and existing pairings must be redone** — same as
+S1. There is deliberately no downgrade path anywhere in this ladder: an optional security
+check is one an attacker simply declines to perform.
+
 ---
 
 ## 9. Testing
